@@ -1159,7 +1159,7 @@ class TestQuantizeFx(QuantizationTestCase):
             "module_name_regex": [("module_conv*", module_name_regex_qconfig)],
             "module_name": [("module_conv2", module_name_qconfig)]}
         m = prepare_fx(m, qconfig_dict)
-        self.assertEqual(m.linear.qconfig, global_qconfig)
+        self.assertEqual(m.linear.qconfig, qconfig_dict[""])
         self.assertEqual(m.conv.qconfig, object_type_qconfig)
         self.assertEqual(m.module_conv1.qconfig, module_name_regex_qconfig)
         self.assertEqual(m.module_conv2.qconfig, module_name_qconfig)
@@ -4480,6 +4480,31 @@ class TestQuantizeFxOps(QuantizationTestCase):
 
 
 class TestQuantizeFxModels(QuantizationTestCase):
+    @skipIfNoFBGEMM
+    @unittest.skipIf(not TEST_CUDA, "gpu is not available.")
+    def test_static_gpu_convert_basic(self):
+
+        class Net(nn.Module):
+            def __init__(self):
+                super(Net, self).__init__()
+                self.relu1 = nn.ReLU()
+                self.conv1 = nn.Conv2d(1, 6, 5)
+                self.linear1 = nn.Linear(120, 1)
+
+            def forward(self, x):
+                x = self.relu1(self.conv1(x))
+                y = self.linear1(x.view(-1))
+                return y
+
+        input = torch.randn((5, 1, 6, 6)).to('cuda')
+        model = Net().to('cuda').eval()
+        qconfig_dict = {"": torch.quantization.get_default_qconfig('fbgemm')}
+        model_prepared = prepare_fx(model, qconfig_dict)
+        model_prepared(input)
+        model_quantized = convert_fx(model_prepared, is_reference=True)
+        out = model_quantized(input)
+        self.assertEqual(out.device.type, 'cuda')
+
     def _test_model_impl(
             self, mode, name, model, eager_quantizable_model,
             check_with_eager=True,
@@ -4735,3 +4760,7 @@ class TestQuantizeFxModels(QuantizationTestCase):
         model = models.__dict__[name](pretrained=True).eval().float()
         self._test_model_impl(
             'ddp', 'resnet18', model, eager_quantizable_model)
+
+if __name__ == "__main__":
+    a = TestQuantizeFxModels()
+    a.test_static_gpu_convert_mobilenet()
