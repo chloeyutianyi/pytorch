@@ -17,9 +17,10 @@ struct THP_CLASS PySavedVariableHooks : public SavedVariableHooks {
   at::Tensor call_unpack_hook() override;
   ~PySavedVariableHooks() override;
 
-private:
-  py::function pack_hook_;
-  py::function unpack_hook_;
+  private:
+    py::function pack_hook_;
+    py::function unpack_hook_;
+    PyObject* data_ = nullptr;
 };
 
 }}
